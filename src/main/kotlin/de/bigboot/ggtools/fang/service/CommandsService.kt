@@ -10,6 +10,10 @@ import discord4j.core.`object`.entity.channel.MessageChannel
 import discord4j.core.event.domain.interaction.ChatInputInteractionEvent
 import discord4j.core.event.domain.message.MessageCreateEvent
 import discord4j.core.spec.*
+import discord4j.discordjson.json.ApplicationCommandOptionData;
+import discord4j.discordjson.json.ApplicationCommandRequest;
+import discord4j.discordjson.json.ImmutableApplicationCommandOptionData;
+import discord4j.discordjson.json.ImmutableApplicationCommandRequest;
 import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.reactive.awaitSingle
 import org.koin.core.component.KoinComponent
@@ -20,7 +24,57 @@ class CommandsService : AutostartService, KoinComponent {
     private val client: GatewayDiscordClient by inject()
     private val permissionService: PermissionService by inject()
 
-    private var commands = CommandGroupBuilder("", "").apply(Root().build).build()
+    private var commands: Command = CommandGroupBuilder("", "").apply(Root().build).build().also {
+        val applicationId = client.getRestClient().getApplicationId().block();
+
+        it.commands.values.forEach {
+            if (it is Command.Group) {
+                var command = ApplicationCommandRequest.builder()
+                    .name(it.name)
+                    .description(it.description);
+
+                fun buildGroup(cmd : Command.Group): ApplicationCommandOptionData {
+                    var command = cmd.slashCommand;
+
+                    cmd.commands.values.forEach {
+                        if (it is Command.Group) {
+                            command = command.addOption(buildGroup(it));
+                        }
+                        else {
+                            println("HELLO");
+                            command = command.addOption(it.slashCommand.build());
+                        }
+                    }
+
+                    return command.build();
+                }
+
+                it.commands.values.forEach {
+                    if (it is Command.Group) {
+                        command = command.addOption(buildGroup(it));
+                    }
+                    else {
+                        command = command.addOption(it.slashCommand.build());
+                    }
+                }
+
+                println("${it.name}")
+
+                client.getRestClient().getApplicationService()
+                    .createGlobalApplicationCommand(applicationId, command.build())
+                    .subscribe();
+            }
+            else {
+                client.getRestClient().getApplicationService()
+                    .createGlobalApplicationCommand(applicationId, ApplicationCommandRequest.builder()
+                                                                                           .name(it.name)
+                                                                                           .description(it.description)
+                                                                                           .build())
+                    .subscribe();
+
+            }
+        }
+    }
 
     init {
         client.eventDispatcher.on<MessageCreateEvent>()
@@ -173,7 +227,7 @@ class CommandsService : AutostartService, KoinComponent {
 
         var args = event.getOptions();
 
-        var command: Command = commands.commands[event.getCommandName()] ?: return;
+        var command: Command = commands
         while (args.size > 0 && command is Command.Group) {
             val next = args.first();
             args = next.getOptions();

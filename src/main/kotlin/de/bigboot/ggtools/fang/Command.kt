@@ -4,6 +4,7 @@ import de.bigboot.ggtools.fang.service.AutostartService
 import discord4j.discordjson.json.ApplicationCommandOptionData;
 import discord4j.discordjson.json.ApplicationCommandRequest;
 import discord4j.discordjson.json.ImmutableApplicationCommandOptionData;
+import discord4j.discordjson.json.ImmutableApplicationCommandRequest;
 import discord4j.core.GatewayDiscordClient
 import discord4j.core.`object`.command.ApplicationCommandOption;
 import discord4j.core.spec.*
@@ -65,6 +66,7 @@ sealed class Command(val name: String, val description: String, var slashCommand
                 commands + mapOf(other.name to other)
             ).apply {
                 parent = this@Group.parent
+                slashCommand
             }
         }
 
@@ -146,21 +148,5 @@ class CommandGroupBuilder(private val name: String, private val description: Str
         name = name,
         description = description,
         commands = commands
-    ).apply {
-        commands.values.forEach { it.parent = this };
-
-        var command = ApplicationCommandRequest.builder()
-            .name(name)
-            .description(description)
-            .type(ApplicationCommandOption.Type.SUB_COMMAND.getValue());
-        commands.values.forEach {
-            command = command.addOption(it.slashCommand.build());
-        }
-
-        val applicationId = client.getRestClient().getApplicationId().block();
-
-        client.getRestClient().getApplicationService()
-            .createGlobalApplicationCommand(applicationId, command.build())
-            .subscribe();
-    }
+    ).apply {commands.values.forEach { it.parent = this };}
 }
